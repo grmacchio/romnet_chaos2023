@@ -1,0 +1,12 @@
+#!/bin/bash
+rm *.exp
+rm *_final.romnet
+rm *_error.pdf
+rm *_romloss.pdf
+rm *_trajRn.pdf
+rm *_trajRr.pdf
+rm *tvloss.pdf
+rm *.out
+for i in {0..63};
+    do rm *$i.romnet
+done
