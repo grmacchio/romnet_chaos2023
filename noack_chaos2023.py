@@ -51,18 +51,18 @@ def generate_rom_results():
     with torch.no_grad():
 
         # experiment types
-        exp_types = [results_basename + "/Fine_ProjAE_REC/",
-                     results_basename + "/Fine_ProjAE_GAP/",
-                     results_basename + "/Fine_ProjAE_RVP/",
-                     results_basename + "/Fine_StandAE_REC/",
-                     results_basename + "/Fine_StandAE_GAP/",
-                     results_basename + "/Fine_StandAE_RVP/",
-                     results_basename + "/Course_ProjAE_REC/",
-                     results_basename + "/Course_ProjAE_GAP/",
-                     results_basename + "/Course_ProjAE_RVP/",
-                     results_basename + "/Course_StandAE_REC/",
-                     results_basename + "/Course_StandAE_GAP/",
-                     results_basename + "/Course_StandAE_RVP/"]
+        exp_types = [results_basename + "/Fine_ProjAE_REC/",     # 0
+                     results_basename + "/Fine_ProjAE_GAP/",     # 1
+                     results_basename + "/Fine_ProjAE_RVP/",     # 2
+                     results_basename + "/Fine_StandAE_REC/",    # 3
+                     results_basename + "/Fine_StandAE_GAP/",    # 4
+                     results_basename + "/Fine_StandAE_RVP/",    # 5
+                     results_basename + "/Course_ProjAE_REC/",   # 6
+                     results_basename + "/Course_ProjAE_GAP/",   # 7
+                     results_basename + "/Course_ProjAE_RVP/",   # 8
+                     results_basename + "/Course_StandAE_REC/",  # 9
+                     results_basename + "/Course_StandAE_GAP/",  # 10
+                     results_basename + "/Course_StandAE_RVP/"]  # 11
         
         # load test data set
         test_traj = romnet.load(data_basename + "/Fine/noack_test.traj")
@@ -210,11 +210,11 @@ def generate_traj_plots():
         exp_types = [results_basename + "/Fine_ProjAE_REC/",
                      results_basename + "/Fine_ProjAE_GAP/",
                      results_basename + "/Fine_ProjAE_RVP/"]
-        exp_xticks = [[-3.0, -2.0, -1.0, 0.0],
-                      [-0.3, 0.0, 0.3, 0.6],
+        exp_xticks = [[-3.0, -2.0, -1.0, 0.0, 1.0],
+                      [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0],
                       [0.0, 0.5, 1.0]]
         exp_yticks = [[3.0, 2.0, 1.0, 0.0, -1.0, -2.0],
-                      [-0.6, -0.3, 0.0, 0.3, 0.6],
+                      [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0],
                       [-1.5, -1.0, -0.5, 0.0, 0.5]]
 
         # load test trajectories

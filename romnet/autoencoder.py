@@ -9,8 +9,8 @@ from abc import ABC, abstractmethod
 from .typing import Vector
 
 __all__ = ["ProjAE", "GAP_loss", "reduced_GAP_loss", "load_romnet", "save_romnet",
-           "recon_loss", "reduced_recon_loss", "AE", "MultiLinear", "AEList", "integral_loss",
-           "weight_func", "SReLU", "SReLUAE", "StandAE"]
+           "recon_loss", "reduced_recon_loss", "AE", "ProjMultiLinearAE", "AEList", "integral_loss",
+           "weight_func", "SReLU", "SReLUAE", "FullyConnected", "StandAE", "LinearAE"]
 
 # for better compatibility with numpy arrays
 torch.set_default_dtype(torch.float64)
@@ -70,6 +70,12 @@ class GeLU(nn.Module):
         return xout, vout
 
 
+def sample_orthrows_matrix(dim_in: int, dim_out: int) -> Tensor:
+    A = torch.randn(dim_out, dim_in).reshape(dim_out, dim_in)
+    norm = torch.linalg.norm(A, dim=1).reshape(dim_out, 1)
+    return A / norm
+
+
 # layers
 class Linear(nn.Module):
 
@@ -77,12 +83,8 @@ class Linear(nn.Module):
         super().__init__()
         self.dim_in = dim_in
         self.dim_out = dim_out
-        if self.dim_in > self.dim_out:
-            self.A = nn.Parameter(torch.tensor(ortho_group.rvs(self.dim_in)[:self.dim_out, :] / np.sqrt(0.425 + 0.444)))  # 2017 - Hendrycks - Adjusting for Dropout Variance in Batch Normalization and Weight Initialization 
-        elif (self.dim_in <=self.dim_out) & ((self.dim_in != 1) or (self.dim_out != 1)):
-            self.A = nn.Parameter(torch.tensor(ortho_group.rvs(self.dim_out)[:, :self.dim_in] / np.sqrt(0.425 + 0.444)))
-        else:
-            self.A = nn.Parameter(torch.tensor(1.))
+        self.layer_scaling = np.sqrt(0.425 + 0.444)  # 2017 - Hendrycks - Adjusting for Dropout Variance in Batch Normalization and Weight Initialization 
+        self.A = nn.Parameter(sample_orthrows_matrix(dim_in, dim_out) / self.layer_scaling)
         if bias:
             self.bias = nn.Parameter(torch.zeros(self.dim_out, 1))
         else:
@@ -156,27 +158,34 @@ class ProjLayerPair(LayerPair):
 
         # activation function parameters
         if angle is None:
-            angle = np.pi / 8
-        self.a = 1.0 / np.sin(angle) ** 2 - 1.0 / np.cos(angle) ** 2
-        self.b = 1.0 / np.sin(angle) ** 2 + 1.0 / np.cos(angle) ** 2
-        self.d = self.b**2 - self.a**2
-        self.x_star = np.sqrt((2 * self.a) / ((self.b + self.a)**2 - self.d))
-        self.y_star = self.orig_dec_activ(torch.tensor(-self.x_star)).item()
+            self.angle = np.pi / 8
+        self.a = 1.0 / np.sin(self.angle) ** 2 - 1.0 / np.cos(self.angle) ** 2
+        self.b = 1.0 / np.sin(self.angle) ** 2 + 1.0 / np.cos(self.angle) ** 2
+        self.c1 = self.b / self.a
+        self.c2 = np.sqrt(2) / self.a / np.sin(self.angle)
+        self.c3 = 1 / self.a
+        self.c4 = 2 / np.sin(self.angle) / np.cos(self.angle)
+        self.c5 = np.sqrt(2) / np.cos(self.angle)
+        self.c6 = 2 * self.a
 
         # input and output dimensions
         self.dim_in = dim_in
         self.dim_out = dim_out
 
         # initialize weights
-        Q = ortho_group.rvs(dim_in)[:, :dim_out]
-        self.D = nn.Parameter(torch.tensor(Q))  # decoding matrix
-        self.X = nn.Parameter(torch.tensor(Q.transpose()))  # encoding matrix
+        if dim_in == 1:
+            self.D = nn.Parameter(torch.tensor([[np.random.choice([-1., 1.])]]))
+            self.X = nn.Parameter(torch.tensor([[np.random.choice([-1., 1.])]]))
+        else:
+            Q = ortho_group.rvs(dim_in)[:, :dim_out]
+            self.D = nn.Parameter(torch.tensor(Q))  # decoding matrix
+            self.X = nn.Parameter(torch.tensor(Q.transpose()))  # encoding matrix
         self.update()
 
         # initialize biases
-        self.bias = nn.Parameter(
-            -np.sqrt(2 * self.a) / self.a * (self.D @ torch.ones(self.dim_out, 1))
-        )
+        self.bias = nn.Parameter(torch.zeros(self.dim_in, 1))
+        # mean_shift = 0.4062708772985451
+        # self.bias = nn.Parameter(mean_shift * torch.ones(self.dim_in, 1))
 
     def extra_repr(self) -> str:
         return "%d, %d" % (self.dim_in, self.dim_out)
@@ -185,40 +194,28 @@ class ProjLayerPair(LayerPair):
         self.XD = self.X @ self.D
         self.XD_INV = self.XD.inverse()
         self.E = (self.XD_INV) @ self.X
-
-    def orig_enc_activ(self, x: Tensor) -> Tensor:
-        """Activation function for encoder"""
-        return (self.b * x - torch.sqrt(self.d * x**2 + 2 * self.a)) / self.a
-
-    def orig_dec_activ(self, x: Tensor) -> Tensor:
-        """Activation function for decoder"""
-        return (self.b * x + torch.sqrt(self.d * x**2 + 2 * self.a)) / self.a
     
+    def inv_activ(self, x: Tensor, sgn: float) -> Tensor:
+        return self.c1 * x - sgn * self.c2 + sgn * self.c3 * torch.sqrt(
+            (self.c4 * x - sgn * self.c5)**2 + self.c6
+        )
+
+    def d_inv_activ(self, x: Tensor, sgn: float) -> Tensor:
+        return self.c1 + sgn * self.c3 * self.c4 * (self.c4 * x - sgn * self.c5) / torch.sqrt(
+            (self.c4 * x - sgn * self.c5)**2 + self.c6
+        )
+
     def enc_activ(self, x: Tensor) -> Tensor:
-        # return self.orig_enc_activ(x)
-        return self.orig_enc_activ(x + self.x_star) + self.y_star
+        return self.inv_activ(x, -1.)
     
     def dec_activ(self, x: Tensor) -> Tensor:
-        # return self.orig_dec_activ(x)
-        return self.orig_dec_activ(x - self.x_star) - self.y_star
-
-    def orig_d_enc_activ(self, x: Tensor) -> Tensor:
-        return self.b / self.a - self.d * x / (
-            self.a * torch.sqrt(self.d * x**2 + 2 * self.a)
-        )
-
-    def orig_d_dec_activ(self, x: Tensor) -> Tensor:
-        return self.b / self.a + self.d * x / (
-            self.a * torch.sqrt(self.d * x**2 + 2 * self.a)
-        )
+        return self.inv_activ(x, 1.)
     
     def d_enc_activ(self, x: Tensor) -> Tensor:
-        # return self.orig_d_enc_activ(x)
-        return self.orig_d_enc_activ(x + self.x_star)
+        return self.d_inv_activ(x, -1.)
 
     def d_dec_activ(self, x: Tensor) -> Tensor:
-        # return self.orig_d_dec_activ(x)
-        return self.orig_d_dec_activ(x - self.x_star)
+        return self.d_inv_activ(x, 1.)
 
     def enc(self, x: TVector) -> Tensor:
         """Encoder"""
@@ -295,7 +292,7 @@ class FullyConnected(nn.Module):
         super().__init__()
         self.dims = dims
         self.num_layers = len(dims) - 1
-        self.num_modules = 2 * self.num_layers + 1
+        self.num_modules = 2 * self.num_layers + 1  # nonlinear layers plus output linear layer
         self.module_list = nn.ModuleList([])
         for i in range(self.num_layers):
             self.module_list.append(Linear(self.dims[i], self.dims[i + 1]))
@@ -504,7 +501,37 @@ class SReLUAE(AE):
         return xout, vout
 
 
-class MultiLinear(AE):
+class LinearAE(AE):
+
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True) -> None:
+        super().__init__()
+        self._dim_in = dim_in
+        self._dim_out = dim_out
+        self.linear_enc = Linear(dim_in, dim_out, bias=bias)
+        self.linear_dec = Linear(dim_out, dim_in, bias=bias)
+
+    @property
+    def dim_in(self) -> int:
+        return self._dim_in
+
+    @property
+    def dim_out(self) -> int:
+        return self._dim_out
+
+    def enc(self, x: TVector) -> Tensor:
+        return self.linear_enc.forward(x)
+
+    def dec(self, x: TVector) -> Tensor:
+        return self.linear_dec.forward(x)
+
+    def d_enc(self, x: TVector, v: TVector) -> Tuple[Tensor, Tensor]:
+        return self.linear_enc.d_forward(x, v)
+
+    def d_dec(self, x: TVector, v: TVector) -> Tuple[Tensor, Tensor]:
+        return self.linear_dec.d_forward(x, v)
+
+
+class ProjMultiLinearAE(AE):
     def __init__(self, dim: int, num_layers: int):
         super().__init__()
         self.dim = dim
@@ -637,9 +664,11 @@ class StandAE(AE):
         self.dec_net = FullyConnected(self.dims)
         self.dims.reverse()
 
+    @property
     def dim_in(self) -> int:
         return self.dims[0]
     
+    @property
     def dim_out(self) -> int:
         return self.dims[-1]
     

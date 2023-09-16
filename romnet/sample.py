@@ -8,7 +8,10 @@ from matplotlib.pyplot import Axes
 
 from .typing import Vector, VectorField
 
-__all__ = ["sample", "sample_gradient", "load", "sample_gradient_long_traj", "sample_fast", "Experiment", "ExperimentList", "load_exp"]
+__all__ = ["sample", "sample_gradient", "load",
+           "sample_gradient_long_traj", "sample_fast",
+           "Experiment", "ExperimentList", "load_exp",
+           "sample_faster_tensor", "rom"]
 
 
 class TrajectoryList(Dataset[Vector]):
@@ -232,7 +235,7 @@ def sample_gradient_long_traj(
     adj_output: Callable[[Vector, Vector], Vector],
     num_outputs: int,
     samples_per_traj: int,
-    L: int,
+    L: int
 ) -> Tuple[GradientDataset, NDArray[np.float64]]:
     """Sample the gradient using the method of long trajectories discussed in
     Algorithm 3.1 of [1].
@@ -313,6 +316,8 @@ class Experiment:
         self.best_rom_epoch = -1
         self.train_time = []
         self.orthrom_loss = np.nan
+        self.add_trained_rom_traj()
+        self.add_trained_orthrom_traj()
 
     def add_loss(
         self,
@@ -477,3 +482,113 @@ def load_exp(filename, reset_best=False):
         experiment.best_val_loss = np.inf
         experiment.best_rom_loss = np.inf
     return experiment
+
+
+import torch
+from torch import Tensor
+from romnet.autoencoder import AE
+from romnet.model import Model, DiscreteModel
+from romnet.timestepper import Timestepper
+from scipy.integrate import solve_ivp
+
+
+def sample_faster_tensor(
+    step: Callable[[Tensor], Tensor], random_state: Callable[[], Tensor], num_traj: int, n: int
+) -> TrajectoryList:
+    """
+    Faster sample() method with a 95%-85% reduction in computation time
+
+    Sample num_traj trajectories each with length n
+
+    random_state() generates a random initial state x
+    step(x) advances the state forward in time
+
+    Returns a TrajectoryList object
+    """
+    ic0 = random_state()
+    traj_traj = torch.zeros((num_traj, n, ic0.shape[0]))
+    traj_traj[0, 0, :] = ic0
+    for i in range(num_traj - 1):
+        traj_traj[i + 1, 0, :] = random_state()
+    for i in range(n - 1):
+        traj_traj[:, i + 1, :] = step(traj_traj[:, i, :])
+    return TrajectoryList(traj_traj)
+
+
+def rom(model: Model, autoencoder: AE, traj: TrajectoryList, dec_rom: bool = False, scipy: bool = False, dt: float = 0.1):
+
+    with torch.no_grad():
+        
+        try:
+
+            # rom
+            def enc_rom_rhs(z: Vector) -> Tensor:
+                x = autoencoder.dec(z)
+                _, v = autoencoder.d_enc(x, model.rhs_tensor(x))
+                return v
+            def dec_rom_rhs(z: Vector) -> Tensor:
+                x = autoencoder.dec(z)
+                I = torch.eye(2).unsqueeze(1)
+                d_decT = autoencoder.d_dec(z, I)[1].transpose(0,1)
+                d_dec = d_decT.transpose(1, 2)
+                rhs = model.rhs_tensor(x).unsqueeze(-1)
+                z_dot = torch.linalg.solve((d_decT @ d_dec), d_decT @ rhs)
+                return z_dot.squeeze(-1)
+            if not dec_rom:
+                rom_rhs = enc_rom_rhs
+            else:
+                rom_rhs = dec_rom_rhs
+
+            # using romnet.timestepper
+            if not scipy:
+
+                # rom discrete time model
+                dt = 0.1
+                rk4 = Timestepper.lookup("rk4")
+                stepper = rk4(dt)
+                step = DiscreteModel(rom_rhs, stepper)
+
+                # rom_traj
+                ics = autoencoder.enc(traj.traj[:, 0, :])
+                ics_itr = iter(ics)
+                def ic():
+                    return next(ics_itr)
+                rom_traj = sample_faster_tensor(step, ic, traj.num_traj, traj.n)
+            
+            # using scipy.integrate.solve_ivp
+            else:
+
+                # solve IVP
+                rom_traj = []
+                ics = autoencoder.enc(traj.traj[:, 0, :])
+                ics_itr = iter(ics)
+                def ic():
+                    return next(ics_itr)
+                for i in range(traj.num_traj):
+                    sol = solve_ivp(
+                        lambda _, z: rom_rhs(z).numpy(),
+                        t_span=[0, dt * traj.n],
+                        y0=ic().numpy(),
+                        method="BDF",
+                        t_eval=np.linspace(0, dt * traj.n, traj.n)
+                    )
+                    rom_traj.append(sol.y.T)
+                rom_traj = TrajectoryList(rom_traj)
+
+            # rom_error
+            y_traj = model.output(traj.traj)
+            y_rom_traj = model.output_tensor(autoencoder.dec(rom_traj.traj)).numpy()
+            rom_error = np.square(np.linalg.norm(y_traj - y_rom_traj, axis=2))
+
+            # rom_loss
+            rom_loss = np.mean(rom_error)
+            print(f"ROM Epoch Loss: {rom_loss:>7f}")
+
+        except:
+
+            rom_loss = np.inf
+            rom_error = np.full((traj.num_traj, model.num_outputs), np.inf)
+            rom_traj = TrajectoryList(np.full((traj.num_traj, traj.n, 2), np.inf))
+            print(f"ROM Epoch Loss: {rom_loss:>7f}")
+
+    return rom_loss, rom_error, rom_traj

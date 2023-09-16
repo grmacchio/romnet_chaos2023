@@ -123,8 +123,8 @@ def test_rom(savefig: bool = False):
     #       In this case, the dimensionality is small so we can use the validation
     #       trajectories to select the best model.
 
-    data_basename = "./data/noack/Course/noack"
-    results_basename = "./results/noack/Course_StandAE_REC/noack"
+    data_basename = "./data/noack/Fine/noack"
+    results_basename = "./results/noack/Fine_StandAE_REC/noack"
 
     with torch.no_grad():
 
@@ -158,11 +158,11 @@ def test_rom(savefig: bool = False):
         if savefig:
             fig.savefig(results_basename + "_romloss.pdf", format="pdf")
 
-        # print the rankings
+        # print the rankings  (chosen based on lowest validation loss)
         print("----------------------------------------- Printing loss rankings")
         exp_list.print_rankings()
 
-        # plot rom error
+        # plot rom error  (models chosen based on lowest validation loss, output here is based on test trajectories)
         print("----------------------------------------- Plotting rom error")
         test_traj = romnet.load(data_basename + "_test.traj")
         traj_num = find_traj_near_origin(test_traj)
@@ -258,7 +258,7 @@ def test_rom(savefig: bool = False):
         if savefig:
             fig.savefig(results_basename + "_time.pdf", format="pdf")
 
-        # calculate manifold error
+        # calculate manifold error  (models chosen based on lowest validation loss)
         print("----------------------------------------- Calculate manifold error")
         for exp_num in range(num_model):
             setattr(exp_list.experiments[exp_num], "manifold_error", manifold_error(exp_num, basename=results_basename))
@@ -266,7 +266,7 @@ def test_rom(savefig: bool = False):
         print("Best EncROM Manifold Error: {}".format(exp_list.experiments[rom_exp_num].manifold_error))
         print("Best DecROM Manifold Error: {}".format(exp_list.experiments[orthrom_exp_num].manifold_error))
 
-        # rom_loss
+        # rom_loss  (models chosen based on lowest validation loss)
         print("----------------------------------------- Printing rom_loss")
         print("Best Val. ROM Loss: {}".format(exp_list.experiments[val_exp_num].trained_rom_loss))
         print("Best EncROM ROM Loss: {}".format(exp_list.experiments[rom_exp_num].trained_rom_loss))

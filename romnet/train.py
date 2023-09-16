@@ -146,7 +146,7 @@ class CoBRAS:
         XdotG = np.array([np.dot(x, g) for x, g in zip(X, G)])
         Xproj = X @ self.Psi[:, :rank]
         Gproj = G @ self.Phi[:, :rank]
-        return ProjectedGradientDataset(Xproj, Gproj, XdotG)
+        return ProjectedGradientDataset(Xproj, Gproj, XdotG, T)
 
 
 class ProjectedStateDataset(Dataset[Tuple[Vector, Vector, Vector]]):

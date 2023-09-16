@@ -169,7 +169,7 @@ class CGL(SemiLinearModel):
         return x @ self._linear.T
 
     def adjoint(self, x: Vector) -> Vector:
-        return self._linear.T @ x
+        return x @ self._linear
 
     def get_solver(self, alpha: float) -> Callable[[Vector], Vector]:
         mat = np.eye(self.num_states) - alpha * self._linear
@@ -180,13 +180,13 @@ class CGL(SemiLinearModel):
         return LUSolver(mat)
 
     def output(self, q: Vector) -> Vector:
-        return np.dot(self.C, q)
+        return q @ self.C.T
     
     def output_tensor(self, q: Tensor) -> Tensor:
         return q @ self.C_tensor.T
 
     def adjoint_output(self, _: Vector, v: Vector) -> Vector:
-        return np.dot(self.C.T, v)
+        return v @ self.C
 
     def nonlinear(self, q: Vector) -> Vector:
         # real and imaginary parts in original state space
@@ -250,7 +250,7 @@ class CGL(SemiLinearModel):
         q0 = np.dot(B_IC, (amplitude * normal))
         return q0
 
-    def random_ic_spiral(self, std: float = .1):
+    def random_ic_spiral(self, std: float = .1) -> Vector:
         real = np.real(self.e_vec[:, self.fastslow_idxs[0]])
         imag = np.imag(self.e_vec[:, self.fastslow_idxs[0]])
         slow_subspace = np.array([real, imag]).T

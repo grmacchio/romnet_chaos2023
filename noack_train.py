@@ -99,13 +99,16 @@ def rom(model: Model, autoencoder: AE, traj: TrajectoryList, dec_rom: bool = Fal
 
 def train_autoencoder(computer: str = "local", job_num: str = "0"):
 
-    data_basename = "./data/noack/Course/noack"
-    results_basename = "./results/noack/Course_StandAE_REC/noack"
+    debug_basename = ""
+    # debug_basename = "/chaos2023"
+    data_basename = "." + debug_basename + "/data/noack/Fine/noack"
+    results_basename = "." + debug_basename + "/results/noack/Fine_StandAE_RVP/noack"
 
     ##################################
     #           Recon Loss           #
     ##################################
 
+    '''
     # local or cluster
     if computer == "local":
         dist.init_process_group("gloo")
@@ -153,7 +156,7 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         # hyperparameters
         learning_rate = 1.0e-3
         batch_size = 400
-        num_epochs = 100 # 300 * 3
+        num_epochs = 300 * 3
         dims = [3, 3, 3, 3, 3, 2]
         gamma_reg = 1.0e-5
 
@@ -164,12 +167,12 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         # experiment = romnet.Experiment()
 
         # load initial autoencoder and initialize experiment
-        # autoencoder = romnet.load_romnet(basename + model_id + "_initial.romnet")
-        # experiment = romnet.Experiment()
+        autoencoder = romnet.load_romnet(results_basename + model_id + "_initial.romnet")
+        experiment = romnet.Experiment()
 
         # load autoencoder and experiment
-        autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
-        experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
+        # autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
+        # experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
 
         # loss function
         def loss_fn(X_pred, X):
@@ -218,6 +221,7 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         toc = time.time()
         print("----------------------------------------- Done")
         print("Run Time: {}".format(toc - tic))
+    '''
 
     ##################################
     #            GAP Loss            #
@@ -274,23 +278,23 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         # hyperparameters
         learning_rate = 1.0e-3
         batch_size = 400
-        num_epochs = 100  # 300 * 3
+        num_epochs = 300 * 3
         dims = [3, 3, 3, 3, 3, 2]
         gamma_reg = 1.0e-5
 
         # initialize autoencoder, save initial autoencoder, and initialize experiment
         # autoencoder = romnet.StandAE(dims)
         # autoencoder = romnet.ProjAE(dims)
-        # romnet.save_romnet(autoencoder, basename + model_id + "_initial" + ".romnet")
+        # romnet.save_romnet(autoencoder, results_basename + model_id + "_initial" + ".romnet")
         # experiment = romnet.Experiment()
 
         # load initial autoencoder and initialize experiment
-        # autoencoder = romnet.load_romnet(basename + model_id + "_initial.romnet")
-        # experiment = romnet.Experiment()
+        autoencoder = romnet.load_romnet(results_basename + model_id + "_initial.romnet")
+        experiment = romnet.Experiment()
 
         # load autoencoder and experiment
-        autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
-        experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
+        # autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
+        # experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
 
         # loss function
         def loss_fn(X_pred, X, G):
@@ -340,12 +344,11 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         print("----------------------------------------- Done")
         print("Run Time: {}".format(toc - tic))
     '''
-
+        
     #################################
     #    Velocity Projection Loss   #
     #################################
 
-    '''
     # local or cluster
     if computer == "local":
         dist.init_process_group("gloo")
@@ -394,7 +397,7 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         # hyperparameters
         learning_rate = 1.0e-3
         batch_size = 2
-        num_epochs = 100  # 300 * 3
+        num_epochs = 300 * 3
         dims = [3, 3, 3, 3, 3, 2]
         gamma_reg = 1.0e-5
         t_batch = t_final
@@ -408,18 +411,18 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         # experiment = romnet.Experiment()
 
         # load initial autoencoder and initialize experiment
-        # autoencoder = romnet.load_romnet(results_basename + model_id + "_initial.romnet")
-        # experiment = romnet.Experiment()
+        autoencoder = romnet.load_romnet(results_basename + model_id + "_initial.romnet")
+        experiment = romnet.Experiment()
 
         # load autoencoder and experiment
-        autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
-        experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
+        # autoencoder = romnet.load_romnet(results_basename + model_id + ".romnet")
+        # experiment = romnet.load_exp(results_basename + model_id + ".exp", reset_best=True)
 
         # loss function
         n_t_batch = int(t_batch / dt) + 1
         training_data.set_time_batch(n_t_batch)
+        t = torch.arange(0, n_t_batch) * dt
         def loss_fn(X_pred, X, Y, F_x):
-            t = torch.arange(0, n_t_batch) * dt
             weights = romnet.weight_func(t, t_batch, L)
             # weights = romnet.weight_func_L0(t, t_batch)
             Y_pred = X_pred
@@ -473,7 +476,7 @@ def train_autoencoder(computer: str = "local", job_num: str = "0"):
         toc = time.time()
         print("----------------------------------------- Done")
         print("Run Time: {}".format(toc - tic))
-    '''
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:

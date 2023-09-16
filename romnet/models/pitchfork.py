@@ -26,14 +26,18 @@ class Pitchfork(Model):
         self.a = a
 
     def rhs(self, x: Vector) -> Vector:
-        x1dot = self.lam1 * x[0] * (self.a**2 - x[0]**2)
-        x2dot = self.lam2 * (x[0]**2 - x[1])
-        return np.array([x1dot, x2dot])
+        out = np.zeros_like(x)
+        out[..., 0] = self.lam1 * x[..., 0] * (self.a**2 - x[..., 0]**2)
+        out[..., 1] = self.lam2 * (x[..., 0]**2 - x[..., 1])
+        return out
 
     def jac(self, x: Vector) -> NDArray[np.float64]:
-        df1 = [self.lam1 * self.a**2 - 3 * self.lam1 * x[0]**2, 0]
-        df2 = [2 * self.lam2 * x[0], -self.lam2]
-        return np.array([df1, df2])
+        out = np.zeros(x.shape + (self.num_states,))
+        out[..., 0, 0] = self.lam1 * self.a**2 * np.ones_like(x[..., 0]) - 3 * self.lam1 * x[..., 0]**2
+        out[..., 1, 0] = np.zeros_like(x[..., 0])
+        out[..., 0, 1] = 2 * self.lam2 * x[..., 0]
+        out[..., 1, 1] = -self.lam2 * np.ones_like(x[..., 0])
+        return out
 
     def adjoint_rhs(self, x: Vector, v: Vector) -> Vector:
         return self.jac(x).T @ v
