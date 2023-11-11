@@ -5,6 +5,6 @@ authors:
     given-names: Gregory, Clarence, Samuel
     orcid: https://orcid.org/0009-0006-1204-1522
 title: "Learning Nonlinear Projections for Reduced-Order Modeling of Dynamical Systems using Constrained Autoencoders"
-version: 1.0.0
+version: 0.0.1
 doi: 10.5281/zenodo.10114600
 date-released: 2023-11-11
