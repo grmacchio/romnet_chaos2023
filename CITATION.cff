@@ -2,9 +2,9 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
   - family-names: Macchio, Rowley, Otto
-    given-names: Gregory, Clancy, Samuel
+    given-names: Gregory, Clarence, Samuel
     orcid: https://orcid.org/0009-0006-1204-1522
 title: "Learning Nonlinear Projections for Reduced-Order Modeling of Dynamical Systems using Constrained Autoencoders"
 version: 1.0.0
-doi: 10.48550/arXiv.2307.15288
+doi: 10.5281/zenodo.10114600
 date-released: 2023-11-11
